@@ -35,6 +35,11 @@ class CanBus(CanBusBase):
     return self.offset
 
   @property
+  def main(self) -> int:
+    # Compatibility alias used by the legacy PQ button path.
+    return self.pt
+
+  @property
   def alt(self) -> int:
     # NetworkLocation.fwdCamera: radar-camera object fusion CAN
     # NetworkLocation.gateway: powertrain CAN
