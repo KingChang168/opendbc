@@ -126,9 +126,15 @@ class CarControllerParams:
       self.STEERING_POWER_MIN      = 4     # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP     = 2     # HCA_03 steering power counter steps
       
-      self.CURVATURE_LIMITS: CurvatureSteeringLimits = CurvatureSteeringLimits(
-        0.195,  # Max curvature for steering command, m^-1
-      )
+      self.CURVATURE_MAX = 0.195          # Max curvature for steering command, m^-1
+      self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX)
+
+      # Longitudinal constants
+      self.ACCEL_INACTIVE = 3.01  # m/s^2
+      self.ACCEL_OVERRIDE = 0.00  # m/s^2
+      self.JERK_LIMIT = 4.0  # m/s^3
+      self.STARTING_ACCEL = 0.85  # m/s^2, minimum acceleration needed for a reliable brake release
+      self.STARTING_VEGO = 0.5  # m/s, keep the start request active until the car is moving
 
       if CP.flags & VolkswagenFlags.ALT_GEAR:
         self.shifter_values = can_define.dv["Gateway_73"]["GE_Fahrstufe"]
@@ -278,6 +284,7 @@ class VolkswagenMLBPlatformConfig(PlatformConfig):
   dbc_dict: DbcDict = field(default_factory=lambda: {Bus.pt: 'vw_mlb'})
   chassis_codes: set[str] = field(default_factory=set)
   wmis: set[WMI] = field(default_factory=set)
+  model_years: set[str] = field(default_factory=set)
 
   def init(self):
     self.flags |= VolkswagenFlags.MLB

@@ -63,6 +63,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.long_limit_control = LongControlLimit(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO) else None
     self.long_override_counter = 0
     self.long_disabled_counter = 0
+    self.meb_starting = False
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.klr_counter_last = None
@@ -111,7 +112,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         else:
           if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
-            apply_curvature = np.clip(CS.out_ic.steeringCurvature, -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX, self.CCP.CURVATURE_LIMITS.CURVATURE_MAX) # synchronize with current curvature
+            apply_curvature = float(np.clip(CS.out_ic.steeringCurvature, -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX, self.CCP.CURVATURE_LIMITS.CURVATURE_MAX)) # synchronize with current curvature
             steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
           else:
             hca_enabled = False
@@ -177,6 +178,9 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         can_sends.append(mebcan.create_blinker_control(self.packer_pt, self.CAN.pt, CS.ea_hud_stock_values, CS.ea_control_stock_values, left_blinker, right_blinker, self.hide_ea_error))
     
     # **** Acceleration Controls ******************************************** #
+
+    if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO) and CS.out_ic.radarDisableFailed:
+      self.meb_starting = False
     
     if self.frame % self.CCP.ACC_CONTROL_STEP == 0 and self.CP.openpilotLongitudinalControl and not CS.out_ic.radarDisableFailed:
       stopping = actuators.longControlState == LongCtrlState.stopping
@@ -188,10 +192,20 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         
         # AEB fallback: when stock AEB is active, always send inactive accel to allow stock system takeover
         long_active = CC.enabled and not CS.out.stockAeb
-        starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting # openpilot sets starting state after overriding, ensure being in range
-        accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if long_active else 0)
-
         long_override = CC.cruiseControl.override or CS.out.gasPressed
+
+        # Replace the deprecated openpilot starting state for MEB/MQB Evo. Latch the start request while releasing the hold
+        # and keep a fixed launch acceleration until the car is moving fast enough for a safe handover to the PID.
+        starting_request = actuators.longControlState == LongCtrlState.pid and CS.esp_hold_confirmation
+        if not long_active or CS.out.accFaulted or long_override or stopping or CS.out.vEgo > self.CCP.STARTING_VEGO:
+          self.meb_starting = False
+        elif starting_request:
+          self.meb_starting = True
+        starting = self.meb_starting
+
+        accel_request = self.CCP.STARTING_ACCEL if starting else actuators.accel
+        accel = float(np.clip(accel_request, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if long_active else 0)
+
         self.long_override_counter = min(self.long_override_counter + 1, 5) if long_override else 0
         long_override_begin = long_override and self.long_override_counter < 5
 
@@ -203,24 +217,24 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
           self.long_jerk_control.update(long_active, long_override, CC_IC.hudLeadDistance, hud_control.leadVisible, accel, critical_state)
           self.long_limit_control.update(long_active, CS.out.vEgoRaw, hud_control.setSpeed, CC_IC.hudLeadDistance, hud_control.leadVisible, critical_state)
 
-        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, long_active, long_override)
-        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, long_active, starting, stopping,
-                                               CS.esp_hold_confirmation, long_override, long_override_begin, long_disabling)
-        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CP, CS.acc_type, long_active,
-                                                           self.long_jerk_control.get_jerk_up() if CC_IC.longComfortMode else 4.0,
-                                                           self.long_jerk_control.get_jerk_down() if CC_IC.longComfortMode else 4.0,
+        acc_control = self.CCS.get_acc_control(CS.out.cruiseState.available, CS.out.accFaulted, long_active, long_override)
+        acc_hold_type = self.CCS.get_acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, long_active, starting, stopping,
+                                                   CS.esp_hold_confirmation, long_override, long_override_begin, long_disabling)
+        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CP, self.CCP, CS.acc_type, long_active,
+                                                           self.long_jerk_control.get_jerk_up() if CC_IC.longComfortMode else self.CCP.JERK_LIMIT,
+                                                           self.long_jerk_control.get_jerk_down() if CC_IC.longComfortMode else self.CCP.JERK_LIMIT,
                                                            self.long_limit_control.get_upper_limit() if CC_IC.longComfortMode else 0.,
                                                            self.long_limit_control.get_lower_limit() if CC_IC.longComfortMode else 0.,
                                                            accel, acc_control, acc_hold_type, stopping, starting, CS.esp_hold_confirmation,
                                                            CS.out.vEgoRaw * CV.MS_TO_KPH, long_override, CS.travel_assist_available))
 
       else:
-        starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
+        starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < 0.25)
         accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.longActive else 0)
         
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
         can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.longActive, accel,
-                                                             acc_control, stopping, starting, CS.esp_hold_confirmation))
+                                                           acc_control, stopping, starting, CS.esp_hold_confirmation))
       self.accel_last = accel
 
     #if self.aeb_available:
@@ -279,8 +293,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
         # AEB fallback: when stock AEB is active, HUD shows inactive state to allow stock system takeover
         long_active = CC.enabled and not CS.out.stockAeb
-        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, long_active,
-                                                        CC.cruiseControl.override or CS.out.gasPressed)
+        acc_hud_status = self.CCS.get_acc_hud_status(CS.out.cruiseState.available, CS.out.accFaulted, long_active,
+                                                     CC.cruiseControl.override or CS.out.gasPressed)
 
         sl_predicative_active = True if CC_IC.cruiseSpeedLimitPredicative and CS.out_ic.cruiseSpeedLimitPredicative != 0 else False
         if CC_IC.cruiseSpeedLimit and CS.out_ic.cruiseSpeedLimit != 0 and self.speed_limit_last != CS.out_ic.cruiseSpeedLimit:
@@ -289,7 +303,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         sl_active = self.frame - self.speed_limit_changed_timer < 400
         speed_limit = CS.out_ic.cruiseSpeedLimitPredicative if sl_predicative_active else (CS.out_ic.cruiseSpeedLimit if sl_active else 0)
           
-        acc_hud_event = self.CCS.acc_hud_event(acc_hud_status, CS.esp_hold_confirmation, sl_predicative_active, CS.speed_limit_predicative_type, sl_active)
+        acc_hud_event = self.CCS.get_acc_hud_event(acc_hud_status, CS.esp_hold_confirmation, sl_predicative_active, CS.speed_limit_predicative_type, sl_active)
           
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
                                                          hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
@@ -321,7 +335,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque_last
-    new_actuators.curvature = float(self.apply_curvature_last)
+    new_actuators.curvature = self.apply_curvature_last
     new_actuators.accel = self.accel_last
     new_actuators.speed = actuators.speed
 
