@@ -4,7 +4,7 @@ from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.interfaces import RadarInterfaceBase
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.volkswagen.values import DBC, VolkswagenFlags
+from opendbc.car.volkswagen.values import CanBus, DBC, VolkswagenFlags
 
 # radar object drel is not end of radar facing side but probably the longitudinal center of object
 # dbc drel offset of -3.6m is measured for a point mass type object (person)
@@ -40,7 +40,7 @@ def get_radar_can_parser(CP):
     return None
 
   messages = [("Strukturen_01", 25)]
-  return CANParser(DBC[CP.carFingerprint][Bus.radar], messages, 2)
+  return CANParser(DBC[CP.carFingerprint][Bus.radar], messages, CanBus(CP).ext)
 
 
 class RadarInterface(RadarInterfaceBase):

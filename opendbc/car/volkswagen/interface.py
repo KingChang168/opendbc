@@ -64,6 +64,8 @@ class CarInterface(CarInterfaceBase):
 
       if ret.networkLocation == NetworkLocation.gateway:
         ret.radarUnavailable = 0x24F not in fingerprint[0] # Strukturen_01
+      elif ret.flags & VolkswagenFlags.FWD_CAMERA_RADAR:
+        ret.radarUnavailable = 0x24F not in fingerprint[CAN.ext] # Strukturen_01
         
       if 0x30B in fingerprint[0]:  # Kombi_01
         ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
@@ -92,7 +94,8 @@ class CarInterface(CarInterfaceBase):
       if 0x12DD54A7 in fingerprint[2]:  # VZE_04
         ret.flags |= VolkswagenFlags.STOCK_VZE_PRESENT.value
 
-      if ret.networkLocation == NetworkLocation.fwdCamera:
+      if (ret.networkLocation == NetworkLocation.fwdCamera and
+          (not (ret.flags & VolkswagenFlags.FWD_CAMERA_RADAR) or ret.radarUnavailable)):
         ret.flags |= VolkswagenFlags.DISABLE_RADAR.value
         safety_configs[0].safetyParam |= VolkswagenSafetyFlags.DISABLE_RADAR.value
 

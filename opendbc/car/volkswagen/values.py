@@ -272,6 +272,7 @@ class VolkswagenFlags(IntFlag):
   MQB_EVO_GEN2 = 2 ** 13
   MLB          = 2 ** 3
   FORD_CAR     = 2 ** 17
+  FWD_CAMERA_RADAR = 2 ** 18
 
 
 @dataclass
@@ -429,6 +430,15 @@ class CAR(Platforms):
     VolkswagenCarSpecs(mass=1550, wheelbase=2.682, steerRatio=15.5, centerToFrontRatio=0.505, tireStiffnessFactor=1.1),
     chassis_codes={"2K"},
     wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN},
+  )
+  VOLKSWAGEN_CADDY_MK5 = VolkswagenMQBevoPlatformConfig(
+    [
+      VWCarDocs("Volkswagen Caddy Maxi 2021-26"),
+    ],
+    VolkswagenCarSpecs(mass=1769, wheelbase=2.970),
+    chassis_codes={"SK"},
+    wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN},
+    flags=VolkswagenFlags.FWD_CAMERA_RADAR,
   )
   VOLKSWAGEN_CRAFTER_MK2 = VolkswagenMQBPlatformConfig(
     [
