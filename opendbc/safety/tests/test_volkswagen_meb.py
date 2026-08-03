@@ -341,7 +341,7 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
       for accel in np.concatenate((np.arange(MIN_ACCEL - 2, MAX_ACCEL + 2, 0.03), extras)):
         accel = round(accel, 2)
         is_inactive_accel = accel == self.INACTIVE_ACCEL
-        is_override = self.ALLOW_OVERRIDE and accel == self.ACCEL_OVERRIDE
+        is_override = controls_allowed and self.ALLOW_OVERRIDE and accel == self.ACCEL_OVERRIDE
         send = (controls_allowed and MIN_ACCEL <= accel <= MAX_ACCEL) or is_inactive_accel or is_override
         self.safety.set_controls_allowed(controls_allowed)
         self.assertEqual(send, self._tx(self._accel_msg(accel)), (controls_allowed, accel))

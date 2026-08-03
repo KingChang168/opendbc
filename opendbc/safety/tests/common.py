@@ -182,10 +182,10 @@ class LongitudinalAccelSafetyTest(SafetyTestBase, abc.ABC):
     for min_accel, max_accel, alternative_experience in limits:
       # enforce we don't skip over 0 or inactive accel
       extras = [0, self.INACTIVE_ACCEL]
-      
+
       if self.ALLOW_OVERRIDE and self.ACCEL_OVERRIDE not in extras:
         extras.append(self.ACCEL_OVERRIDE)
-        
+
       for accel in np.concatenate((np.arange(min_accel - 1, max_accel + 1, 0.05), extras)):
         accel = round(accel, 2) # floats might not hit exact boundary conditions without rounding
         for controls_allowed in [True, False]:
@@ -193,7 +193,8 @@ class LongitudinalAccelSafetyTest(SafetyTestBase, abc.ABC):
           self.safety.set_alternative_experience(alternative_experience)
           if self.LONGITUDINAL:
             should_tx = controls_allowed and min_accel <= accel <= max_accel
-            should_tx = should_tx or accel == self.INACTIVE_ACCEL or (accel == self.ACCEL_OVERRIDE and self.ALLOW_OVERRIDE)
+            should_tx = should_tx or accel == self.INACTIVE_ACCEL or \
+                        (controls_allowed and accel == self.ACCEL_OVERRIDE and self.ALLOW_OVERRIDE)
           else:
             should_tx = False
           self.assertEqual(should_tx, self._tx(self._accel_msg(accel)))
@@ -1021,7 +1022,8 @@ class SafetyTest(SafetyTestBase):
               continue
             if {attr, current_test}.issubset({'TestVolkswagenPqSafety', 'TestVolkswagenPqStockSafety', 'TestVolkswagenPqLongSafety',
                                               'TestVolkswagenMqbSafety', 'TestVolkswagenMqbStockSafety', 'TestVolkswagenMqbLongSafety',
-                                              'TestVolkswagenMebSafety', 'TestVolkswagenMebStockSafety', 'TestVolkswagenMebLongSafety', 'TestVolkswagenMebCurvatureSafety',
+                                              'TestVolkswagenMebSafety', 'TestVolkswagenMebStockSafety',
+                                              'TestVolkswagenMebLongSafety', 'TestVolkswagenMebCurvatureSafety',
                                               'TestVolkswagenMqbEvoStockSafety', 'TestVolkswagenMqbEvoLongSafety'}):
               continue
             if {attr, current_test}.issubset({'TestVolkswagenPqSafety', 'TestVolkswagenPqStockSafety', 'TestVolkswagenPqLongSafety'}):
@@ -1059,7 +1061,7 @@ class SafetyTest(SafetyTestBase):
             # Volkswagen MQB and Honda Bosch Radarless ACC HUD messages overlap
             if attr == 'TestVolkswagenMqbLongSafety' and current_test.startswith('TestHondaBoschRadarless'):
               tx = list(filter(lambda m: m[0] not in [0x30c, ], tx))
-            
+
             # TODO: Temporary, should be fixed in panda firmware, safety_honda.h
             if attr.startswith('TestHonda'):
               # exceptions for common msgs across different hondas
