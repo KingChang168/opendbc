@@ -1,7 +1,6 @@
 import time
 
-from opendbc.car import Bus, get_safety_config, structs, uds, DT_CTRL
-from opendbc.car.disable_ecu import disable_ecu
+from opendbc.car import Bus, get_safety_config, structs, uds
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.volkswagen.carcontroller import CarController
 from opendbc.car.volkswagen.carstate import CarState
@@ -38,7 +37,7 @@ class CarInterface(CarInterfaceBase):
         ret.networkLocation = NetworkLocation.gateway
       else:
         ret.networkLocation = NetworkLocation.fwdCamera
-        
+
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation
 
     elif ret.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
@@ -47,10 +46,10 @@ class CarInterface(CarInterfaceBase):
         safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
       elif ret.flags & VolkswagenFlags.MQB_EVO:
         safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMqbEvo)]
-        
+
       if ret.flags & (VolkswagenFlags.MEB_GEN2 | VolkswagenFlags.MQB_EVO_GEN2):
         safety_configs[0].safetyParam |= VolkswagenSafetyFlags.ALT_CRC_VARIANT_1.value
-      
+
       ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
       ret.transmissionType = TransmissionType.direct
       #ret.steerControlType = structs.CarParams.SteerControlType.angle
@@ -71,7 +70,7 @@ class CarInterface(CarInterfaceBase):
         # allow the Golf 8-compatible radar parser when Strukturen_01 is
         # actually present in the fingerprint.
         ret.radarUnavailable = 0x24F not in fingerprint[0] # Strukturen_01
-        
+
       if 0x30B in fingerprint[0]:  # Kombi_01
         ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
 
@@ -289,16 +288,16 @@ class CarInterface(CarInterfaceBase):
     empty_resp = b''
 
     txt = "disable" if disable else "enable"
-	  
+
     for i in range(retry):
       try:
-		# Tester Present
+        # Tester Present
         if disable:
           query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr_radar, None)], [tp_req], [tp_resp], volkswagen_rx_offset, functional_addrs=[addr_diag])
           if not query.get_data(timeout):
             carlog.warning(f"Tester Present returned no data on attempt {i+1}")
             continue
-		  
+
           # Extended Diagnostic Session
           query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr_radar, None)], [ext_diag_req], [ext_diag_resp], volkswagen_rx_offset)
           if not query.get_data(timeout):
@@ -311,7 +310,7 @@ class CarInterface(CarInterfaceBase):
           carlog.warning(f"Radar {txt} by programming session sent on attempt {i+1}")
 
         return True
-            
+
       except Exception as e:
         carlog.error(f"Radar {txt} exception on attempt {i+1}: {repr(e)}")
         continue
@@ -325,15 +324,14 @@ class CarInterface(CarInterfaceBase):
     # detect if the radar can be disabled by engine state
     # [Motor_54][Engine_On]
     end_time = time.monotonic() + timeout
-  
+
     while time.monotonic() < end_time:
       packets = can_recv(wait_for_one=True) or []
       for packet in packets:
         for msg in packet:
           if msg.address != 0x14C:
             continue
-  
-          dat = msg.dat
+
           engine_on = bool((msg.dat[9] >> 5) & 0x01)
 
           if engine_on:
@@ -342,6 +340,6 @@ class CarInterface(CarInterfaceBase):
           else:
             carlog.warning(f"Engine state is allowed: Engine_On={engine_on}")
             return True
-  
+
     carlog.warning("Engine state state unknown")
     return True

@@ -23,7 +23,7 @@ ACC_HUD_ACTIVE   = 3
 ACC_HUD_ENABLED  = 2
 ACC_HUD_DISABLED = 0
 
-  
+
 def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power=0):
   values = {
     "Curvature": abs(apply_curvature), # in rad/m
@@ -85,7 +85,7 @@ def create_blinker_control(packer, bus, ea_hud_stock_values, ea_control_stock_va
 
 def create_lka_hud_control(packer, bus, CP, ldw_stock_values, lat_active, steering_pressed, hud_alert, hud_control, sound_alert):
   display_mode = 1 if lat_active and not (CP.flags & VolkswagenFlags.CLUSTER_NO_TA_LANES) else 0 # travel assist style showing yellow lanes when op is active
-  
+
   values = {}
   if len(ldw_stock_values):
     values = {s: ldw_stock_values[s] for s in [
@@ -274,7 +274,7 @@ def get_acc_hud_status(main_switch_on, acc_faulted, long_active, override):
 
 def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit):
   acc_event = 0
-  
+
   if esp_hold and acc_hud_control == ACC_HUD_ACTIVE:
     acc_event = 3 # acc ready message at standstill
   elif acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) and speed_limit_predicative:
@@ -286,23 +286,25 @@ def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_
     acc_event = 5 # acc limited by speed limit by camera (recently detected)
 
   return acc_event
-  
+
 
 def get_desired_gap(distance_bars, desired_gap, current_gap_signal):
   # mapping desired gap to correct signal of corresponding distance bar
   gap = 0
-  
+
   if distance_bars == current_gap_signal:
-    gap = desired_gap 
+    gap = desired_gap
 
   return gap
 
 
-def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit):
+def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars,
+                           esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit):
 
   values = {
     "ACC_Status_ACC":                acc_control,
-    "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # display speed limits (message type defined by ACC_Events)
+    # Display speed limits; message type is defined by ACC_Events.
+    "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0,
     "ACC_Wunschgeschw_02":           set_speed if set_speed < 250 else 327.36,
     "ACC_Gesetzte_Zeitluecke":       distance_bars, # 5 distance bars available (3 are used by OP)
     "ACC_Display_Prio":              0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1, # probably keeping warning in front
@@ -310,7 +312,9 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "ACC_Akustischer_Fahrerhinweis": 3 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables sound warning
     "ACC_Texte_Zusatzanz_02":        11 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # type of warning: Break!
     "ACC_Abstandsindex_02":          569, # seems to be default for MEB but is not static in every case
-    "ACC_EGO_Fahrzeug":              2 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else (1 if acc_control == ACC_HUD_ACTIVE else 0), # red car warn symbol for fcw
+    # Red car warning symbol for FCW.
+    "ACC_EGO_Fahrzeug":              (2 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
+                                       else (1 if acc_control == ACC_HUD_ACTIVE else 0)),
     "Lead_Type_Detected":            1 if lead_visible else 0, # object should be displayed
     "Lead_Type":                     3 if lead_visible else 0, # displaying a car
     "Lead_Distance":                 distance if lead_visible else 0, # hud distance of object
@@ -319,7 +323,8 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Street_Color":                  1 if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # light grey (1) or dark (0) street
     "Lead_Brightness":               3 if acc_control == ACC_HUD_ACTIVE else 0, # object shows in colour
     "ACC_Events":                    acc_event, # e.g. pACC Events
-    "ACC_Event_Wunschgeschw":        speed_limit * CV.MS_TO_KPH, # this speed is shown for curve event speeds, not for speed signs (speed signs in "ACC_Tempolimit")
+    # This speed is shown for curve events, but speed signs use ACC_Tempolimit.
+    "ACC_Event_Wunschgeschw":        speed_limit * CV.MS_TO_KPH,
     "Zeitluecke_1":                  get_desired_gap(distance_bars, desired_gap, 1), # desired distance to lead object for distance bar 1
     "Zeitluecke_2":                  get_desired_gap(distance_bars, desired_gap, 2), # desired distance to lead object for distance bar 2
     "Zeitluecke_3":                  get_desired_gap(distance_bars, desired_gap, 3), # desired distance to lead object for distance bar 3
@@ -334,11 +339,11 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
   }
 
   return packer.make_can_msg("ACC_19", bus, values)
-  
-  
+
+
 def create_aeb_control(packer, bus, CP):
   # default inactive values basically present for every plattform (MEB Gen 1/2, MQBevo Gen 1)
-  
+
   values = {
     "SET_ME_126":         126,
     "SET_ME_30":          30,
@@ -355,18 +360,18 @@ def create_aeb_control(packer, bus, CP):
     values.update({
       "SET_ME_1": 1,
     })
-  
+
   return packer.make_can_msg("AWV_03", bus, values)
 
 
 def create_aeb_hud(packer, bus, disabled):
   values = {
-    "AWV_Enabled":  not disabled, # displays aeb disabled
+    "AWV_Enabled": not disabled, # displays aeb disabled
     "AWV_Init":     1, # displays not initialized white icon
     "SET_ME_1":     1,
     "SET_ME_511":   511,
   }
-  
+
   return packer.make_can_msg("MEB_AWV_01", bus, values)
 
 
