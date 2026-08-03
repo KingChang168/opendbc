@@ -107,8 +107,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        repository: 'sunnypilot/sunnypilot'
-        ref: '9d1e4a0fd9f92246eca902004416f7dfee70f933'  # FIXME-SP: revert back to master once sunnypilot/sunnypilot#1883 is merged
+        repository: 'infiniteCable2/openpilot'
+        ref: '3cd75c7a3244742f8a87cc02c571e3c619d43e78'
         submodules: true
     - run: ./tools/op.sh setup
     - run: rm -rf opendbc_repo/
