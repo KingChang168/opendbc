@@ -35,11 +35,6 @@ class CanBus(CanBusBase):
     return self.offset
 
   @property
-  def main(self) -> int:
-    # Compatibility alias used by the legacy PQ button path.
-    return self.pt
-
-  @property
   def alt(self) -> int:
     # NetworkLocation.fwdCamera: radar-camera object fusion CAN
     # NetworkLocation.gateway: powertrain CAN
@@ -126,9 +121,15 @@ class CarControllerParams:
       self.STEERING_POWER_MIN      = 4     # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP     = 2     # HCA_03 steering power counter steps
       
-      self.CURVATURE_LIMITS: CurvatureSteeringLimits = CurvatureSteeringLimits(
-        0.195,  # Max curvature for steering command, m^-1
-      )
+      self.CURVATURE_MAX = 0.195          # Max curvature for steering command, m^-1
+      self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX)
+
+      # Longitudinal constants
+      self.ACCEL_INACTIVE = 3.01  # m/s^2
+      self.ACCEL_OVERRIDE = 0.00  # m/s^2
+      self.JERK_LIMIT = 4.0  # m/s^3
+      self.STARTING_ACCEL = 0.85  # m/s^2, minimum acceleration needed for a reliable brake release
+      self.STARTING_VEGO = 0.5  # m/s, keep the start request active until the car is moving
 
       if CP.flags & VolkswagenFlags.ALT_GEAR:
         self.shifter_values = can_define.dv["Gateway_73"]["GE_Fahrstufe"]
@@ -271,6 +272,7 @@ class VolkswagenFlags(IntFlag):
   MQB_EVO_GEN2 = 2 ** 13
   MLB          = 2 ** 3
   FORD_CAR     = 2 ** 17
+  FWD_CAMERA_RADAR = 2 ** 18
 
 
 @dataclass
@@ -278,6 +280,7 @@ class VolkswagenMLBPlatformConfig(PlatformConfig):
   dbc_dict: DbcDict = field(default_factory=lambda: {Bus.pt: 'vw_mlb'})
   chassis_codes: set[str] = field(default_factory=set)
   wmis: set[WMI] = field(default_factory=set)
+  model_years: set[str] = field(default_factory=set)
 
   def init(self):
     self.flags |= VolkswagenFlags.MLB
@@ -435,6 +438,7 @@ class CAR(Platforms):
     VolkswagenCarSpecs(mass=1769, wheelbase=2.970),
     chassis_codes={"SK"},
     wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN},
+    flags=VolkswagenFlags.FWD_CAMERA_RADAR,
   )
   VOLKSWAGEN_CRAFTER_MK2 = VolkswagenMQBPlatformConfig(
     [

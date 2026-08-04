@@ -1,11 +1,11 @@
 import time
 
-from opendbc.car import get_safety_config, structs, uds, DT_CTRL
+from opendbc.car import Bus, get_safety_config, structs, uds, DT_CTRL
 from opendbc.car.disable_ecu import disable_ecu
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.volkswagen.carcontroller import CarController
 from opendbc.car.volkswagen.carstate import CarState
-from opendbc.car.volkswagen.values import CanBus, CAR, NetworkLocation, TransmissionType, VolkswagenFlags, VolkswagenSafetyFlags, RADAR_DISABLE_STATE
+from opendbc.car.volkswagen.values import CanBus, CAR, DBC, NetworkLocation, TransmissionType, VolkswagenFlags, VolkswagenSafetyFlags, RADAR_DISABLE_STATE
 from opendbc.car.volkswagen.radar_interface import RadarInterface
 from opendbc.car.carlog import carlog
 from opendbc.car.isotp_parallel_query import IsoTpParallelQuery
@@ -22,7 +22,7 @@ class CarInterface(CarInterfaceBase):
   def _get_params(ret: structs.CarParams, candidate: CAR, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
     CAN = CanBus(fingerprint=fingerprint)
     ret.brand = "volkswagen"
-    ret.radarUnavailable = True
+    ret.radarUnavailable = Bus.radar not in DBC[candidate]
 
     if ret.flags & VolkswagenFlags.PQ:
       # Set global PQ35/PQ46/NMS parameters
@@ -64,13 +64,8 @@ class CarInterface(CarInterfaceBase):
 
       if ret.networkLocation == NetworkLocation.gateway:
         ret.radarUnavailable = 0x24F not in fingerprint[0] # Strukturen_01
-      elif candidate == CAR.VOLKSWAGEN_CADDY_MK5:
-        # The Caddy's MQB Evo radar is visible on the camera-facing CAN
-        # topology even though the rest of the vehicle is classified as
-        # fwdCamera.  Keep the normal safety/network classification, but
-        # allow the Golf 8-compatible radar parser when Strukturen_01 is
-        # actually present in the fingerprint.
-        ret.radarUnavailable = 0x24F not in fingerprint[0] # Strukturen_01
+      elif ret.flags & VolkswagenFlags.FWD_CAMERA_RADAR:
+        ret.radarUnavailable = 0x24F not in fingerprint[CAN.ext] # Strukturen_01
         
       if 0x30B in fingerprint[0]:  # Kombi_01
         ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
@@ -99,7 +94,8 @@ class CarInterface(CarInterfaceBase):
       if 0x12DD54A7 in fingerprint[2]:  # VZE_04
         ret.flags |= VolkswagenFlags.STOCK_VZE_PRESENT.value
 
-      if ret.networkLocation == NetworkLocation.fwdCamera and ret.radarUnavailable:
+      if (ret.networkLocation == NetworkLocation.fwdCamera and
+          (not (ret.flags & VolkswagenFlags.FWD_CAMERA_RADAR) or ret.radarUnavailable)):
         ret.flags |= VolkswagenFlags.DISABLE_RADAR.value
         safety_configs[0].safetyParam |= VolkswagenSafetyFlags.DISABLE_RADAR.value
 
@@ -131,6 +127,7 @@ class CarInterface(CarInterfaceBase):
         ret.networkLocation = NetworkLocation.gateway
       else:
         ret.networkLocation = NetworkLocation.fwdCamera
+        ret.radarUnavailable = True
 
       ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
 
@@ -213,18 +210,8 @@ class CarInterface(CarInterfaceBase):
       ret.steerActuatorDelay = 0.07
 
     ret.pcmCruise = not ret.openpilotLongitudinalControl
+    ret.stopAccel = -0.55
     ret.autoResumeSng = ret.minEnableSpeed == -1
-
-    if ret.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
-      ret.startingState = True # OP long starting state is used: for very slow start the car can go into error (EPB car shutting down bug)
-      ret.startAccel = 0.8
-      ret.vEgoStarting = 0.5 # minimum ~0.5 m/s acc starting state is neccessary to not fault the car
-      ret.vEgoStopping = 0.1
-      ret.stopAccel = -0.55 # different stopping accels seen, good working value
-    else:
-      ret.vEgoStarting = 0.1
-      ret.vEgoStopping = 0.5
-      ret.stopAccel = -0.55
 
     if CAN.pt >= 4:
       safety_configs.insert(0, get_safety_config(structs.CarParams.SafetyModel.noOutput))

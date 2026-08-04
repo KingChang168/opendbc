@@ -4,7 +4,7 @@ from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.interfaces import RadarInterfaceBase
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.volkswagen.values import CAR, DBC, VolkswagenFlags
+from opendbc.car.volkswagen.values import CanBus, DBC, VolkswagenFlags
 
 # radar object drel is not end of radar facing side but probably the longitudinal center of object
 # dbc drel offset of -3.6m is measured for a point mass type object (person)
@@ -12,7 +12,7 @@ from opendbc.car.volkswagen.values import CAR, DBC, VolkswagenFlags
 DREL_FRONT_EDGE_MARGIN = 1.5 # in m
 
 RADAR_ADDR = 0x24F
-NO_OBJECT = 0
+NO_OBJECT_ID = 0
 DISTANCE_STATUS_VALID = 0
 RADAR_UNAVAILABLE_THRESH = 5
 LANE_TYPES = ("Same_Lane", "Left_Lane", "Right_Lane")
@@ -40,10 +40,7 @@ def get_radar_can_parser(CP):
     return None
 
   messages = [("Strukturen_01", 25)]
-  # Caddy exposes the MQB Evo radar on the powertrain bus. Golf 8 and the
-  # other supported gateway-topology platforms expose it on bus 2.
-  radar_bus = 0 if CP.carFingerprint == CAR.VOLKSWAGEN_CADDY_MK5 else 2
-  return CANParser(DBC[CP.carFingerprint][Bus.radar], messages, radar_bus)
+  return CANParser(DBC[CP.carFingerprint][Bus.radar], messages, CanBus(CP).ext)
 
 
 class RadarInterface(RadarInterfaceBase):
@@ -103,7 +100,7 @@ class RadarInterface(RadarInterfaceBase):
     active_objects: dict[int, tuple[float, float, float]] = {}
     for obj_id_sig, long_sig, lat_sig, vel_sig in SIGNAL_SETS:
       obj_id = get(obj_id_sig)
-      if obj_id == NO_OBJECT:
+      if obj_id == NO_OBJECT_ID:
         continue
 
       if obj_id in active_objects:
