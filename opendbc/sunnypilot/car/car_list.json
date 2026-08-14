@@ -4116,6 +4116,21 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
+  "Volkswagen Caddy Maxi 2021-26": {
+    "platform": "VOLKSWAGEN_CADDY_MK5",
+    "make": "Volkswagen",
+    "brand": "volkswagen",
+    "model": "Caddy Maxi",
+    "year": [
+      "2021",
+      "2022",
+      "2023",
+      "2024",
+      "2025",
+      "2026"
+    ],
+    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
+  },
   "Volkswagen California 2021-23": {
     "platform": "VOLKSWAGEN_TRANSPORTER_T61",
     "make": "Volkswagen",

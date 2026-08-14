@@ -411,6 +411,11 @@ FW_VERSIONS = {
       b'\xf1\x875WA980653D \xf1\x893405',
     ],
   },
+  CAR.VOLKSWAGEN_CADDY_MK5: {
+    (Ecu.fwdRadar, 0x757, None): [
+      b'\xf1\x875WA907572C \xf1\x890461',
+    ],
+  },
   CAR.VOLKSWAGEN_ID3_MK1: {     
     (Ecu.inverter, 0x17fc007c, None): [
       b'\xf1\x871EA907121AH\xf1\x896050\xf1\x82010\x00',
