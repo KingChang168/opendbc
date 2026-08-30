@@ -1104,13 +1104,15 @@
     ],
     "package": "All"
   },
-  "Honda City (Brazil only) 2023": {
+  "Honda City (Brazil only) 2023-25": {
     "platform": "HONDA_CITY_7G",
     "make": "Honda",
     "brand": "honda",
     "model": "City (Brazil only)",
     "year": [
-      "2023"
+      "2023",
+      "2024",
+      "2025"
     ],
     "package": "All"
   },
@@ -1138,7 +1140,7 @@
     ],
     "package": "All"
   },
-  "Honda Civic 2022-24": {
+  "Honda Civic 2022-26": {
     "platform": "HONDA_CIVIC_2022",
     "make": "Honda",
     "brand": "honda",
@@ -1146,7 +1148,9 @@
     "year": [
       "2022",
       "2023",
-      "2024"
+      "2024",
+      "2025",
+      "2026"
     ],
     "package": "All"
   },
@@ -3349,6 +3353,20 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
+  "Škoda Octavia 2020-24": {
+    "platform": "SKODA_OCTAVIA_MK4",
+    "make": "Škoda",
+    "brand": "volkswagen",
+    "model": "Octavia",
+    "year": [
+      "2020",
+      "2021",
+      "2022",
+      "2023",
+      "2024"
+    ],
+    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
+  },
   "Škoda Octavia RS 2016": {
     "platform": "SKODA_OCTAVIA_MK3",
     "make": "Škoda",
@@ -4113,21 +4131,6 @@
     "model": "Caddy Maxi",
     "year": [
       "2019"
-    ],
-    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
-  },
-  "Volkswagen Caddy Maxi 2021-26": {
-    "platform": "VOLKSWAGEN_CADDY_MK5",
-    "make": "Volkswagen",
-    "brand": "volkswagen",
-    "model": "Caddy Maxi",
-    "year": [
-      "2021",
-      "2022",
-      "2023",
-      "2024",
-      "2025",
-      "2026"
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },

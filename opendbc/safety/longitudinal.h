@@ -7,19 +7,12 @@ bool get_longitudinal_allowed(void) {
 // Safety checks for longitudinal actuation
 bool longitudinal_accel_checks(int desired_accel, const LongitudinalLimits limits) {
   bool accel_valid = get_longitudinal_allowed() && !safety_max_limit_check(desired_accel, limits.max_accel, limits.min_accel);
-  bool accel_valid_override = controls_allowed && desired_accel == limits.override_accel && limits.allow_override;
   bool accel_inactive = desired_accel == limits.inactive_accel;
-  return !(accel_valid || accel_inactive || accel_valid_override);
+  return !(accel_valid || accel_inactive);
 }
 
 bool longitudinal_speed_checks(int desired_speed, const LongitudinalLimits limits) {
   return !get_longitudinal_allowed() && (desired_speed != limits.inactive_speed);
-}
-
-bool longitudinal_transmission_rpm_checks(int desired_transmission_rpm, const LongitudinalLimits limits) {
-  bool transmission_rpm_valid = get_longitudinal_allowed() && !safety_max_limit_check(desired_transmission_rpm, limits.max_transmission_rpm, limits.min_transmission_rpm);
-  bool transmission_rpm_inactive = desired_transmission_rpm == limits.inactive_transmission_rpm;
-  return !(transmission_rpm_valid || transmission_rpm_inactive);
 }
 
 bool longitudinal_gas_checks(int desired_gas, const LongitudinalLimits limits) {

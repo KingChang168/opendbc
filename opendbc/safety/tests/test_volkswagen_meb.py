@@ -11,8 +11,19 @@ from opendbc.safety.tests.common import CANPackerSafety
 MAX_ACCEL = 2.0
 MIN_ACCEL = -3.5
 
+# ACC_18.ACC_Anforderung_HMS
+HMS_KEINE_ANFORDERUNG = 0
+HMS_HALTEN = 1
+HMS_ANFAHREN = 4
+HMS_LOESEN_UEBER_RAMPE = 5
+
+# ACC_18.ACC_Status_ACC
+ACC_AKTIV_REGELT = 3
+ACC_OVERRIDE = 4
+
 # MEB message IDs
 MSG_LH_EPS_03  = 0x9F
+MSG_AWV_03     = 0xDB
 MSG_ESC_51     = 0xFC
 MSG_Motor_51   = 0x10B
 MSG_GRA_ACC_01 = 0x12B
@@ -135,9 +146,15 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
     }
     return self.packer.make_can_msg_safety("HCA_03", 0, values)
 
-  def _accel_msg(self, accel):
-    values = {"ACC_Sollbeschleunigung_02": accel}
+  def _accel_msg(self, accel, hold_type=0, acc_status=0, acc_anfahren=0, acc_anhalten=0):
+    values = {"ACC_Sollbeschleunigung_02": accel, "ACC_Anforderung_HMS": hold_type,
+              "ACC_Status_ACC": acc_status, "ACC_Anfahren": acc_anfahren,
+              "ACC_Anhalten": acc_anhalten}
     return self.packer.make_can_msg_safety("ACC_18", 0, values)
+
+  def _aeb_msg(self, active, counter=0):
+    values = {"AEB_Active": active, "COUNTER": counter}
+    return self.packer.make_can_msg_safety("AWV_03", 2, values)
 
   def _tsk_status_msg(self, enable, main_switch=True):
     if main_switch:
@@ -186,6 +203,22 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
   def test_torque_driver_measurements(self):
     for t in (0, 100, -100, 250, -250):
       self._rx(self._torque_driver_msg(t))
+
+  def test_rx_hook(self):
+    # Verify checksum and counter enforcement for every checked MEB message.
+    for name in ("LH_EPS_03", "Motor_14", "GRA_ACC_01", "QFK_01", "ESP_21", "Motor_51", "ESC_51"):
+      with self.subTest(msg=name):
+        next_counter = common.MAX_WRONG_COUNTERS + 1
+        for counter in range(next_counter):
+          self.assertTrue(self._rx(self.packer.make_can_msg_safety(name, 0, {"COUNTER": counter})))
+
+        msg = self.packer.make_can_msg_safety(name, 0, {"COUNTER": next_counter})
+        msg[0].data[0] ^= 0xFF
+        self.assertFalse(self._rx(msg))
+
+        for i in range(common.MAX_WRONG_COUNTERS):
+          should_rx = i < common.MAX_WRONG_COUNTERS - 1
+          self.assertEqual(should_rx, self._rx(self.packer.make_can_msg_safety(name, 0, {"COUNTER": next_counter})))
 
   def test_main_switch_off_disables_controls(self):
     self.safety.set_controls_allowed(True)
@@ -286,7 +319,6 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_03, MSG_LDW_02, MSG_EA_02, MSG_TA_01, MSG_MEB_ACC_01, MSG_ACC_18),
                              2: (MSG_KLR_01,)}
 
-  ALLOW_OVERRIDE = True
   ACCEL_OVERRIDE = 0
   INACTIVE_ACCEL = 3.01
 
@@ -335,24 +367,56 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
 
   def test_accel_safety_check(self):
     for controls_allowed in [True, False]:
-      extras = [0, self.INACTIVE_ACCEL]
-      if self.ALLOW_OVERRIDE and self.ACCEL_OVERRIDE not in extras:
-        extras.append(self.ACCEL_OVERRIDE)
-      for accel in np.concatenate((np.arange(MIN_ACCEL - 2, MAX_ACCEL + 2, 0.03), extras)):
+      for accel in np.concatenate((np.arange(MIN_ACCEL - 2, MAX_ACCEL + 2, 0.03), [0, self.INACTIVE_ACCEL])):
         accel = round(accel, 2)
         is_inactive_accel = accel == self.INACTIVE_ACCEL
-        is_override = self.ALLOW_OVERRIDE and accel == self.ACCEL_OVERRIDE
-        send = (controls_allowed and MIN_ACCEL <= accel <= MAX_ACCEL) or is_inactive_accel or is_override
+        send = (controls_allowed and MIN_ACCEL <= accel <= MAX_ACCEL) or is_inactive_accel
         self.safety.set_controls_allowed(controls_allowed)
         self.assertEqual(send, self._tx(self._accel_msg(accel)), (controls_allowed, accel))
 
   def test_accel_override_with_gas(self):
-    if not self.ALLOW_OVERRIDE:
-      pass
     self.safety.set_controls_allowed(True)
     self.safety.set_gas_pressed_prev(True)
     self.assertTrue(self._tx(self._accel_msg(self.ACCEL_OVERRIDE)))
     self.assertFalse(self._tx(self._accel_msg(MAX_ACCEL)))
+
+    self.safety.set_controls_allowed(False)
+    self.assertFalse(self._tx(self._accel_msg(self.ACCEL_OVERRIDE)))
+    self.assertTrue(self._tx(self._accel_msg(self.INACTIVE_ACCEL)))
+
+  def test_stock_aeb_blocks_longitudinal(self):
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._rx(self._aeb_msg(False, counter=0)))
+    self.assertTrue(self._tx(self._accel_msg(MAX_ACCEL)))
+
+    self.assertTrue(self._rx(self._aeb_msg(True, counter=1)))
+    self.assertFalse(self._tx(self._accel_msg(MAX_ACCEL)))
+    self.assertFalse(self._tx(self._accel_msg(self.ACCEL_OVERRIDE)))
+    self.assertTrue(self._tx(self._accel_msg(self.INACTIVE_ACCEL)))
+
+  def test_hold_type_safety_check(self):
+    for controls_allowed in (True, False):
+      for hold_type in range(8):
+        self.safety.set_controls_allowed(controls_allowed)
+        send = (hold_type in (HMS_KEINE_ANFORDERUNG, HMS_LOESEN_UEBER_RAMPE) or
+                (controls_allowed and hold_type in (HMS_HALTEN, HMS_ANFAHREN)))
+        self.assertEqual(send, self._tx(self._accel_msg(self.INACTIVE_ACCEL, hold_type=hold_type)))
+
+  def test_drive_off_and_hold_request_safety_check(self):
+    for controls_allowed in (True, False):
+      for acc_anfahren in (0, 1):
+        for acc_anhalten in (0, 1):
+          self.safety.set_controls_allowed(controls_allowed)
+          send = controls_allowed or not (acc_anfahren or acc_anhalten)
+          self.assertEqual(send, self._tx(self._accel_msg(self.INACTIVE_ACCEL, acc_anfahren=acc_anfahren,
+                                                          acc_anhalten=acc_anhalten)))
+
+  def test_acc_status_safety_check(self):
+    for controls_allowed in (True, False):
+      for acc_status in range(8):
+        self.safety.set_controls_allowed(controls_allowed)
+        send = controls_allowed or acc_status not in (ACC_AKTIV_REGELT, ACC_OVERRIDE)
+        self.assertEqual(send, self._tx(self._accel_msg(self.INACTIVE_ACCEL, acc_status=acc_status)))
 
 
 class TestVolkswagenMebGen2LongSafety(TestVolkswagenMebLongSafety):

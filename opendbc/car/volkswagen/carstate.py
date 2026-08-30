@@ -71,9 +71,10 @@ class CarState(CarStateBase, MadsCarState):
       return self.update_meb(pt_cp, cam_cp, alt_cp, ext_cp)
     elif self.CP.flags & VolkswagenFlags.MLB:
       return self.update_mlb(pt_cp, cam_cp, ext_cp, alt_cp)
-    elif self.CP.flags & VolkswagenFlags.MEB:
-      return self.update_meb(pt_cp, cam_cp, ext_cp)
+    else:
+      return self.update_mqb(pt_cp, cam_cp, ext_cp)
 
+  def update_mqb(self, pt_cp, cam_cp, ext_cp) -> structs.CarState:
     ret = structs.CarState()
     ret_sp = structs.CarStateSP()
     ret_ic = structs.CarStateIC()
@@ -88,57 +89,55 @@ class CarState(CarStateBase, MadsCarState):
     else:
       ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(pt_cp.vl["Gateway_73"]["GE_Fahrstufe"], None))
 
-    if True:
-      # MQB-specific
-      if self.CP.flags & VolkswagenFlags.KOMBI_PRESENT:
-        self.upscale_lead_car_signal = bool(pt_cp.vl["Kombi_03"]["KBI_Variante"])  # Analog vs digital instrument cluster
+    if self.CP.flags & VolkswagenFlags.KOMBI_PRESENT:
+      self.upscale_lead_car_signal = bool(pt_cp.vl["Kombi_03"]["KBI_Variante"])  # Analog vs digital instrument cluster
 
-      self.parse_wheel_speeds(ret,
-        pt_cp.vl["ESP_19"]["ESP_VL_Radgeschw_02"],
-        pt_cp.vl["ESP_19"]["ESP_VR_Radgeschw_02"],
-        pt_cp.vl["ESP_19"]["ESP_HL_Radgeschw_02"],
-        pt_cp.vl["ESP_19"]["ESP_HR_Radgeschw_02"],
-      )
+    self.parse_wheel_speeds(ret,
+      pt_cp.vl["ESP_19"]["ESP_VL_Radgeschw_02"],
+      pt_cp.vl["ESP_19"]["ESP_VR_Radgeschw_02"],
+      pt_cp.vl["ESP_19"]["ESP_HL_Radgeschw_02"],
+      pt_cp.vl["ESP_19"]["ESP_HR_Radgeschw_02"],
+    )
 
-      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
-        ret.carFaultedNonCritical = bool(cam_cp.vl["HCA_01"]["EA_Ruckfreigabe"]) or cam_cp.vl["HCA_01"]["EA_ACC_Sollstatus"] > 0  # EA
+    if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
+      ret.carFaultedNonCritical = bool(cam_cp.vl["HCA_01"]["EA_Ruckfreigabe"]) or cam_cp.vl["HCA_01"]["EA_ACC_Sollstatus"] > 0  # EA
 
-      brake_pedal_pressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
-      brake_pressure_detected = bool(pt_cp.vl["ESP_05"]["ESP_Fahrer_bremst"])
-      ret.brakePressed = brake_pedal_pressed or brake_pressure_detected
-      ret.parkingBrake = bool(pt_cp.vl["Kombi_01"]["KBI_Handbremse"])  # FIXME: need to include an EPB check as well
+    brake_pedal_pressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
+    brake_pressure_detected = bool(pt_cp.vl["ESP_05"]["ESP_Fahrer_bremst"])
+    ret.brakePressed = brake_pedal_pressed or brake_pressure_detected
+    ret.parkingBrake = bool(pt_cp.vl["Kombi_01"]["KBI_Handbremse"])  # FIXME: need to include an EPB check as well
 
-      ret.doorOpen = any([pt_cp.vl["Gateway_72"]["ZV_FT_offen"],
-                          pt_cp.vl["Gateway_72"]["ZV_BT_offen"],
-                          pt_cp.vl["Gateway_72"]["ZV_HFS_offen"],
-                          pt_cp.vl["Gateway_72"]["ZV_HBFS_offen"],
-                          pt_cp.vl["Gateway_72"]["ZV_HD_offen"]])
+    ret.doorOpen = any([pt_cp.vl["Gateway_72"]["ZV_FT_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_BT_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_HFS_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_HBFS_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_HD_offen"]])
 
-      if self.CP.enableBsm:
-        # Infostufe: BSM LED on, Warnung: BSM LED flashing
-        ret.leftBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_li"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_li"])
-        ret.rightBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_re"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_re"])
+    if self.CP.enableBsm:
+      # Infostufe: BSM LED on, Warnung: BSM LED flashing
+      ret.leftBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_li"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_li"])
+      ret.rightBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_re"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_re"])
 
-      ret.stockFcw = bool(ext_cp.vl["ACC_10"]["AWV2_Freigabe"])
-      ret.stockAeb = bool(ext_cp.vl["ACC_10"]["ANB_Teilbremsung_Freigabe"]) or bool(ext_cp.vl["ACC_10"]["ANB_Zielbremsung_Freigabe"])
+    ret.stockFcw = bool(ext_cp.vl["ACC_10"]["AWV2_Freigabe"])
+    ret.stockAeb = bool(ext_cp.vl["ACC_10"]["ANB_Teilbremsung_Freigabe"]) or bool(ext_cp.vl["ACC_10"]["ANB_Zielbremsung_Freigabe"])
 
-      self.acc_type = ext_cp.vl["ACC_06"]["ACC_Typ"]
-      self.esp_hold_confirmation = bool(pt_cp.vl["ESP_21"]["ESP_Haltebestaetigung"])
-      acc_limiter_mode = ext_cp.vl["ACC_02"]["ACC_Gesetzte_Zeitluecke"] == 0
-      speed_limiter_mode = bool(pt_cp.vl["TSK_06"]["TSK_Limiter_ausgewaehlt"])
+    self.acc_type = ext_cp.vl["ACC_06"]["ACC_Typ"]
+    self.esp_hold_confirmation = bool(pt_cp.vl["ESP_21"]["ESP_Haltebestaetigung"])
+    acc_limiter_mode = ext_cp.vl["ACC_02"]["ACC_Gesetzte_Zeitluecke"] == 0
+    speed_limiter_mode = bool(pt_cp.vl["TSK_06"]["TSK_Limiter_ausgewaehlt"])
 
-      ret.cruiseState.available = pt_cp.vl["TSK_06"]["TSK_Status"] in (2, 3, 4, 5)
-      ret.cruiseState.enabled = pt_cp.vl["TSK_06"]["TSK_Status"] in (3, 4, 5)
-      ret.cruiseState.speed = ext_cp.vl["ACC_02"]["ACC_Wunschgeschw_02"] * CV.KPH_TO_MS if self.CP.pcmCruise else 0
-      ret.accFaulted = pt_cp.vl["TSK_06"]["TSK_Status"] in (6, 7)
+    ret.cruiseState.available = pt_cp.vl["TSK_06"]["TSK_Status"] in (2, 3, 4, 5)
+    ret.cruiseState.enabled = pt_cp.vl["TSK_06"]["TSK_Status"] in (3, 4, 5)
+    ret.cruiseState.speed = ext_cp.vl["ACC_02"]["ACC_Wunschgeschw_02"] * CV.KPH_TO_MS if self.CP.pcmCruise else 0
+    ret.accFaulted = pt_cp.vl["TSK_06"]["TSK_Status"] in (6, 7)
 
-      ret.leftBlinker = bool(pt_cp.vl["Blinkmodi_02"]["Comfort_Signal_Left"])
-      ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["Comfort_Signal_Right"])
+    ret.leftBlinker = bool(pt_cp.vl["Blinkmodi_02"]["Comfort_Signal_Left"])
+    ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["Comfort_Signal_Right"])
 
     # Shared logic
     ret.vEgoCluster = pt_cp.vl["Kombi_01"]["KBI_angez_Geschw"] * CV.KPH_TO_MS
 
-    self.parse_mlb_mqb_steering_state(ret, pt_cp)
+    self.parse_mlb_mqb_steering_state(ret, ret_ic, pt_cp)
 
     ret.gasPressed = pt_cp.vl["Motor_20"]["MO_Fahrpedalrohwert_01"] > 0
     ret.espActive = bool(pt_cp.vl["ESP_21"]["ESP_Eingriff"])
@@ -355,11 +354,41 @@ class CarState(CarStateBase, MadsCarState):
       # Speed limiter mode; ECM faults if we command ACC while not pcmCruise
       ret.cruiseState.nonAdaptive = bool(pt_cp.vl["Motor_51"]["TSK_Limiter_ausgewaehlt"])
 
-    accFaulted = (pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7) or
-                  ext_cp.vl["ACC_19"]["ACC_Status_ACC"] == 6)  # reversible fault in ACC system
-    ret.accFaulted = self.update_acc_fault(accFaulted, parking_brake=ret.parkingBrake, drive_mode=drive_mode)
+    tsk_status = pt_cp.vl["Motor_51"]["TSK_Status"]
+    tsk_faulted = tsk_status in (6, 7)
+    engine_off = pt_cp.vl["Motor_54"]["Engine_On"] == 0
 
-    ret_ic.radarDisableFailed = True if RADAR_DISABLE_STATE["error"] == True and self.CP.flags & VolkswagenFlags.DISABLE_RADAR else False
+    # Long_Control_Inhibit is currently identified only in the MEB DBC. MQB
+    # Evo uses the same brake_only TSK state below, but has no verified
+    # equivalent bit yet.
+    long_control_inhibit = (self.CP.flags & VolkswagenFlags.MEB and
+                            pt_cp.vl["VMM_02"]["Long_Control_Inhibit"] == 2)
+
+    aeb_unavailable = (not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR) and
+                       bool(ext_cp.vl["AWV_03"]["AWV_Unavailable"]))
+    # MEB has verified leading indicators for the short TSK fault tail, so use
+    # upstream's measured 10-frame window. MQB Evo has no identified VMM
+    # inhibit signal; retain the fork's conservative brake-based 300-frame
+    # fallback until an equivalent signal is verified from logs.
+    if self.CP.flags & VolkswagenFlags.MEB:
+      transient_inhibit = engine_off or long_control_inhibit
+      recovery_frames = 10
+    else:
+      transient_inhibit = engine_off or (ret.parkingBrake and not drive_mode) or ret.brakePressed
+      recovery_frames = 300
+    ret.accFaulted = (self.update_acc_fault(tsk_faulted,
+                                            transient_inhibit=transient_inhibit,
+                                            recovery_frames=recovery_frames) or
+                      aeb_unavailable)
+
+    radar_disable_failed = bool(RADAR_DISABLE_STATE["error"] and self.CP.flags & VolkswagenFlags.DISABLE_RADAR)
+    ret_ic.radarDisableFailed = radar_disable_failed
+
+    # Stock refuses engagement while TSK is winding braking down. Requesting
+    # drive-off here can fault TSK. MEB additionally exposes the VMM inhibit
+    # after harsh braking. A failed camera-position radar disable must also
+    # prevent engaging a controller which intentionally emits no ACC frames.
+    ret.carNotReady = tsk_status == 5 or bool(long_control_inhibit) or radar_disable_failed
 
     if self.CP.flags & VolkswagenFlags.MQB_EVO:
       self.esp_hold_confirmation = bool(pt_cp.vl["ESP_21"]["ESP_Haltebestaetigung"])
@@ -390,7 +419,8 @@ class CarState(CarStateBase, MadsCarState):
     self.speed_limit_mgr.update(ret.vEgo, psd_04_values, psd_05_values, psd_06_values, vze_04_values, raining, diagnose_01_values)
     ret_ic.cruiseSpeedLimit = self.speed_limit_mgr.get_speed_limit()
     ret_ic.cruiseSpeedLimitPredicative = self.speed_limit_mgr.get_speed_limit_predicative()
-    self.speed_limit_predicative_type = self.speed_limit_mgr.get_speed_limit_predicative_type()
+    ret_ic.cruiseSpeedLimitPredicativeType = self.speed_limit_mgr.get_speed_limit_predicative_type()
+    self.speed_limit_predicative_type = ret_ic.cruiseSpeedLimitPredicativeType
 
     ret_sp.speedLimit = ret_ic.cruiseSpeedLimit
     
@@ -454,11 +484,11 @@ class CarState(CarStateBase, MadsCarState):
     # TODO: We don't have a true mainswitch state yet, might need stateful tracking on LS_01 if momentary-press is a thing
     # TSK_04.TSK_Status_GRA_ACC_02 0 = not engaged, 1 = engaged, 2 = engaged with driver accel override, 3 = fault
     ret.cruiseState.available = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] in (0, 1, 2)
-    ret.cruiseState.available = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] in (1, 2)
+    ret.cruiseState.enabled = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] in (1, 2)
     ret.accFaulted = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] == 3
     ret.cruiseState.speed = ext_cp.vl["ACC_02"]["ACC_Wunschgeschw_02"] * CV.KPH_TO_MS
 
-    self.parse_mlb_mqb_steering_state(ret, pt_cp)
+    self.parse_mlb_mqb_steering_state(ret, ret_ic, pt_cp)
 
     brake_pedal_pressed = bool(pt_cp.vl["Motor_03"]["MO_Fahrer_bremst"])
     brake_pressure_detected = bool(pt_cp.vl["ESP_05"]["ESP_Fahrer_bremst"])
@@ -500,7 +530,7 @@ class CarState(CarStateBase, MadsCarState):
       self.low_speed_alert = False
     return self.low_speed_alert
 
-  def parse_mlb_mqb_steering_state(self, ret, pt_cp, drive_mode=True):
+  def parse_mlb_mqb_steering_state(self, ret, ret_ic, pt_cp, drive_mode=True):
     ret.steeringAngleDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradwinkel"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradwinkel"])]
     ret.steeringRateDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
     ret.steeringTorque = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
@@ -532,30 +562,14 @@ class CarState(CarStateBase, MadsCarState):
     temp_fault = (drive_mode and hca_status in ("REJECTED", "PREEMPTED")) or not self.eps_init_complete
     return temp_fault, perm_fault, warning
     
-  def update_acc_fault(self, acc_fault, parking_brake=False, drive_mode=True, recovery_frames_max=100):
-    # Ignore FAULT when not in drive mode and parked
-    # do not show misleading error during ignition in parked state
-    # grant a short time to recover a normal cruise state
-    fault = acc_fault
-    if parking_brake and not drive_mode:
-      fault = False
+  def update_acc_fault(self, acc_fault, transient_inhibit=False, recovery_frames=10):
+    # TSK can temporarily report a fault while the car is off, after hard
+    # braking, or while VMM inhibits longitudinal control. Mask only that
+    # recovery tail; carNotReady separately prevents engagement throughout the
+    # brake_only/inhibit state.
+    if transient_inhibit:
       self.cruise_recovery_timer = self.frame
-    elif self.frame - self.cruise_recovery_timer < recovery_frames_max:
-      fault = False
-    return fault
-
-  def update_acc_fault(self, acc_fault, parking_brake=False, drive_mode=True, brake_pressed=False, recovery_frames_max=300):
-    # Ignore FAULT when not in drive mode and parked
-    # do not show misleading error during ignition in parked state
-    # grant a short time to recover a normal cruise state
-    # after hard brake, stock system prevents acc engage for ~3 seconds
-    fault = acc_fault
-    if (parking_brake and not drive_mode) or brake_pressed:
-      fault = False
-      self.cruise_recovery_timer = self.frame
-    elif self.frame - self.cruise_recovery_timer < recovery_frames_max:
-      fault = False
-    return fault
+    return acc_fault and self.frame - self.cruise_recovery_timer >= recovery_frames
 
   @staticmethod
   def get_can_parsers(CP, CP_SP):
