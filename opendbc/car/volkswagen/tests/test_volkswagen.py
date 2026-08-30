@@ -5,7 +5,7 @@ import unittest
 from opendbc.car import DT_CTRL
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
-from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, WMI
+from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, VolkswagenFlags, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
 Ecu = CarParams.Ecu
@@ -30,6 +30,9 @@ class TestVolkswagenHCAMitigation(unittest.TestCase):
         assert hca_mitigation.update(actuator_value, actuator_value) == expected_torque, f"{frame=}"
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):
+  def test_caddy_fwd_camera_radar(self):
+    assert CAR.VOLKSWAGEN_CADDY_MK5.config.flags & VolkswagenFlags.FWD_CAMERA_RADAR
+
   def test_spare_part_fw_pattern(self):
     # Relied on for determining if a FW is likely VW
     for platform, ecus in FW_VERSIONS.items():
