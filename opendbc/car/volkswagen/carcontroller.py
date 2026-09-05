@@ -76,6 +76,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     actuators = CC.actuators
     hud_control = CC.hudControl
     can_sends = []
+    apply_torque = self.apply_torque_last
 
     # copy custom data to carstate
     CS.force_rhd_for_bsm = CC_IC.forceRHDForBSM
