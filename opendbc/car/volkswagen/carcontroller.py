@@ -85,6 +85,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
     # **** Steering Controls ************************************************ #
 
+    apply_torque = self.apply_torque_last
     if self.frame % self.CCP.STEER_STEP == 0:
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
         # Logic to avoid HCA refused state:

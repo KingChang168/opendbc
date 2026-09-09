@@ -1,10 +1,11 @@
 import random
 import re
 import unittest
+from types import SimpleNamespace
 
 from opendbc.car import DT_CTRL
 from opendbc.car.structs import CarParams
-from opendbc.car.volkswagen.carcontroller import HCAMitigation
+from opendbc.car.volkswagen.carcontroller import CarController, HCAMitigation
 from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, VolkswagenFlags, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
@@ -28,6 +29,37 @@ class TestVolkswagenHCAMitigation(unittest.TestCase):
         should_nudge = actuator_value != 0 and frame == self.STUCK_TORQUE_FRAMES
         expected_torque = actuator_value - (1, -1)[actuator_value < 0] if should_nudge else actuator_value
         assert hca_mitigation.update(actuator_value, actuator_value) == expected_torque, f"{frame=}"
+
+
+class TestVolkswagenEmergencyAssist(unittest.TestCase):
+  def test_reuses_torque_between_steering_frames(self):
+    """Emergency Assist must use the last command on odd, non-HCA send frames."""
+    controller = CarController.__new__(CarController)
+    controller.frame = 1
+    controller.apply_torque_last = 42
+    controller.apply_curvature_last = 0.
+    controller.accel_last = 0.
+    controller.lead_distance_bars_last = 0
+    controller.gra_acc_counter_last = 0
+    controller.CP = SimpleNamespace(flags=VolkswagenFlags.STOCK_HCA_PRESENT,
+                                    openpilotLongitudinalControl=False, pcmCruise=False)
+    controller.CCP = SimpleNamespace(STEER_STEP=2, STEER_MAX=300, ACC_CONTROL_STEP=2, LDW_STEP=10, ACC_HUD_STEP=2)
+    controller.CAN = SimpleNamespace(cam=2)
+    controller.packer_pt = object()
+
+    sent_torques = []
+    controller.CCS = SimpleNamespace(create_eps_update=lambda packer, bus, values, torque: sent_torques.append(torque))
+
+    actuators = SimpleNamespace(speed=0., as_builder=lambda: SimpleNamespace())
+    hud_control = SimpleNamespace(leadDistanceBars=0)
+    CC = SimpleNamespace(actuators=actuators, hudControl=hud_control)
+    CC_IC = SimpleNamespace(forceRHDForBSM=False, cruiseSpeedLimitPredicative=False,
+                            cruiseSpeedLimitPredReactToSL=False, cruiseSpeedLimitPredReactToCurves=False)
+    CS = SimpleNamespace(out=SimpleNamespace(steeringTorque=0.), eps_stock_values={}, gra_stock_values={"COUNTER": 0})
+
+    controller.update(CC, SimpleNamespace(), CC_IC, CS, 0)
+
+    assert sent_torques == [84.]
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):
   def test_caddy_fwd_camera_radar(self):
