@@ -272,6 +272,7 @@ class VolkswagenFlags(IntFlag):
   MQB_EVO_GEN2 = 2 ** 13
   MLB          = 2 ** 3
   FORD_CAR     = 2 ** 17
+  FWD_CAMERA_RADAR = 2 ** 18
 
 
 @dataclass
@@ -437,6 +438,7 @@ class CAR(Platforms):
     VolkswagenCarSpecs(mass=1769, wheelbase=2.970),
     chassis_codes={"SK"},
     wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN},
+    flags=VolkswagenFlags.FWD_CAMERA_RADAR,
   )
   VOLKSWAGEN_CRAFTER_MK2 = VolkswagenMQBPlatformConfig(
     [
