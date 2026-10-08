@@ -1,7 +1,7 @@
 VERSION ""
 
 
-NS_ : 
+NS_ :
 	NS_DESC_
 	CM_
 	BA_DEF_
@@ -1077,4 +1077,3 @@ VAL_ 1264 CAN_RX_VEHICLE_SPEED_DIRECTION 1 "Reverse" 0 "Forward" ;
 VAL_ 1264 CAN_RX_STEERING_VALIDITY 1 "True" 0 "False" ;
 VAL_ 1264 CAN_RX_STEERING_ANGLE_SIGN 1 "Right Clockwise" 0 "Left CounterClockwise" ;
 VAL_ 1264 CAN_RX_STEERING_ANGLE_RATE_SIGN 1 "Right Clockwise" 0 "Left CounterClockwise" ;
-
