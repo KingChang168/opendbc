@@ -75,7 +75,7 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
     crc = volkswagen_crc8_lut_8h2f[crc];
   }
   
-  uint8_t counter = volkswagen_mqb_meb_get_counter(msg);
+  uint8_t counter = volkswagen_mxb_get_counter(msg);
   if (msg->addr == MSG_LH_EPS_03) {
     crc ^= (uint8_t[]){0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5}[counter];
   } else if (msg->addr == MSG_GRA_ACC_01) {
@@ -130,7 +130,7 @@ static uint32_t volkswagen_meb_gen2_compute_crc(const CANPacket_t *msg) {
     crc = volkswagen_crc8_lut_8h2f[crc];
   }
   
-  uint8_t counter = volkswagen_mqb_meb_get_counter(msg);
+  uint8_t counter = volkswagen_mxb_get_counter(msg);
   if (msg->addr == MSG_QFK_01) {
 	crc ^= (uint8_t[]){0x18,0x71,0x10,0x8D,0xD7,0xAA,0xB0,0x78,0xAC,0x12,0xAE,0x0C,0xDD,0xF1,0x85,0x68}[counter];
   } else if (msg->addr == MSG_ESC_51) {
@@ -349,7 +349,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
 
   // Safety check for HCA_03 Heading Control Assist curvature
   if (msg->addr == MSG_HCA_03) {
-    int desired_curvature_raw = GET_BYTES(msg, 3, 2) & 0x7FFFU;
+    int desired_curvature_raw = GET_BYTES_LE(msg, 3, 2) & 0x7FFFU;
 
     bool desired_curvature_sign = GET_BIT(msg, 39U);
     if (!desired_curvature_sign) {
@@ -369,10 +369,8 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   if (msg->addr == MSG_ACC_18) {
     // WARNING: IF WE TAKE THE SIGNAL FROM THE CAR WHILE ACC ACTIVE AND BELOW ABOUT 3km/h, THE CAR ERRORS AND PUTS ITSELF IN PARKING MODE WITH EPB!
     int desired_accel = ((((msg->data[4] & 0x7U) << 8) | msg->data[3]) * 5U) - 7220U;
-    // VW keeps ACC in override while the driver presses the accelerator. It
-    // expects the neutral 0.0 m/s² command rather than the usual inactive
-    // 3.01 m/s² value in that state.
-    bool accel_override = controls_allowed && gas_pressed_prev && (desired_accel == 0);
+    // MEB inactive accel is 3.01, but we also need to send 0.0 for gas override.
+    bool accel_override = controls_allowed && (desired_accel == 0);
     if (!accel_override && longitudinal_accel_checks(desired_accel, VOLKSWAGEN_MEB_LONG_LIMITS)) {
       tx = false;
     }
@@ -422,7 +420,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
 
   // UDS: Only tester present ("\x02\x3E\x80\x00\x00\x00\x00\x00") allowed on diagnostics address
   if (msg->addr == MSG_DIAGNOSTIC) {
-    if ((GET_BYTES(msg, 0, 4) != 0x00803E02U) || (GET_BYTES(msg, 4, 4) != 0x0U)) {
+    if ((GET_BYTES_LE(msg, 0, 4) != 0x00803E02U) || (GET_BYTES_LE(msg, 4, 4) != 0x0U)) {
       tx = false;
     }
   }
@@ -434,7 +432,7 @@ const safety_hooks volkswagen_meb_hooks = {
   .init = volkswagen_meb_init,
   .rx = volkswagen_meb_rx_hook,
   .tx = volkswagen_meb_tx_hook,
-  .get_counter = volkswagen_mqb_meb_get_counter,
-  .get_checksum = volkswagen_mqb_meb_get_checksum,
+  .get_counter = volkswagen_mxb_get_counter,
+  .get_checksum = volkswagen_mxb_get_checksum,
   .compute_checksum = volkswagen_meb_gen2_compute_crc,
 };
