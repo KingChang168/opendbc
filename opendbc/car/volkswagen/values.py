@@ -270,7 +270,7 @@ class VolkswagenFlags(IntFlag):
   MQB_EVO_GEN2 = 2 ** 13
   MLB          = 2 ** 3
   FORD_CAR     = 2 ** 17
-  FWD_CAMERA_RADAR = 2 ** 18
+  FWD_CAMERA_RADAR = 2 ** 19
 
 
 @dataclass
