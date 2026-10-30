@@ -10,7 +10,6 @@ from opendbc.car.common.conversions import Conversions as CV
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
 ACCEL_INACTIVE = 3.01
-ACCEL_OVERRIDE = 0.00
 
 ACC_CTRL_ERROR    = 6
 ACC_CTRL_OVERRIDE = 4
@@ -184,10 +183,12 @@ class MebLongStateMachine:
     # warning: car is reacting to hold mechanic even with long control off
     # HALTEN -> KEINE_ANFORDERUNG causes the car to fault into park, so both branches below put a ramp in
     # between: disengaging always ramps, and while engaged a release ramps until 5 kph
-    # NOTE: this allows KEINE_ANFORDERUNG -> ANFAHREN, but we haven't observed a fault due to this yet
+    # NOTE: ANFAHREN faults TSK if the hold manager isn't holding
     # TODO: camera can send 7 on disengage at a stop which we don't fully understand yet
     stopping = CC.actuators.longControlState == LongCtrlState.stopping
-    starting = CC.actuators.longControlState == LongCtrlState.pid and CS.esp_hold_confirmation
+    # HMS_Status leaves holding as soon as we send anfahren, so keep driving off until we leave standstill
+    driving_off = self.prev_acc_hold_type == self.acc_hold_type_vals['ANFAHREN'] and CS.esp_standstill
+    starting = CC.actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or driving_off)
     long_active = CC.longActive and not CS.out.accFaulted  # catches it one frame earlier, not sure if needed
 
     if not long_active:
@@ -247,54 +248,22 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
 
   def __init__(self, CP, CCP):
     super().__init__(CP, CCP)
-    self.long_active = False
-    self.long_override = False
     self.acc_enabled = False
-    self.starting = False
-    self.comfort_accel = 0.0
 
   def reset(self):
     self.disengage_ramp_counter = 0
     self.prev_acc_hold_type = self.acc_hold_type_vals['KEINE_ANFORDERUNG']
     self.acc_status = self.acc_status_vals['ACC_OFF_HAUPTSCHALTER_AUS']
-    self.long_active = False
-    self.long_override = False
     self.acc_enabled = False
-    self.starting = False
-    self.comfort_accel = 0.0
 
   def update(self, CS, CC, accel) -> tuple[float, int, int, bool, bool, bool]:
-    blocked_by_car = CS.out.accFaulted or CS.out.stockAeb
-    # Keep the ACC session enabled through driver overrides.
-    self.acc_enabled = CC.enabled and not blocked_by_car
-    self.long_active = self.acc_enabled and CC.longActive
-    self.long_override = self.acc_enabled and CS.out.gasPressed and not CS.out.brakePressed
-
-    long_state = CC.actuators.longControlState
-    if not self.long_active or long_state == LongCtrlState.stopping or CS.out.vEgo > self.CCP.STARTING_VEGO:
-      self.starting = False
-    elif long_state == LongCtrlState.pid and CS.esp_hold_confirmation:
-      self.starting = True
-
-    if not self.acc_enabled:
-      self.comfort_accel = 0.0
-    elif self.long_override:
-      self.comfort_accel = self.CCP.ACCEL_OVERRIDE
-    elif self.starting:
-      self.comfort_accel = self.CCP.STARTING_ACCEL
-    else:
-      self.comfort_accel = accel
-
-    # Reuse the upstream HMS transitions with the fork states above.
-    effective_cs = SimpleNamespace(out=CS.out, esp_hold_confirmation=CS.esp_hold_confirmation or self.starting)
-    effective_cc = SimpleNamespace(
-      enabled=self.acc_enabled,
-      longActive=self.long_active,
-      cruiseControl=SimpleNamespace(override=self.long_override),
-      actuators=CC.actuators,
+    # Keep the upstream state machine unchanged except while stock AEB is active.
+    self.acc_enabled = CC.enabled and not CS.out.stockAeb
+    effective_cc = CC if not CS.out.stockAeb else SimpleNamespace(
+      enabled=False, longActive=False, cruiseControl=CC.cruiseControl, actuators=CC.actuators,
     )
     accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill = super().update(
-      effective_cs, effective_cc, self.comfort_accel,
+      CS, effective_cc, accel,
     )
     held = acc_hold_type == self.acc_hold_type_vals['HALTEN'] and CS.esp_hold_confirmation
     return accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill, held
