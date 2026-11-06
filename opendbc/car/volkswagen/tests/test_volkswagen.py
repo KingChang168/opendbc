@@ -1,12 +1,11 @@
 import random
 import re
 import unittest
-from types import SimpleNamespace
 
-from opendbc.can import CANPacker
-from opendbc.car import Bus, DT_CTRL
+from opendbc.can import CANPacker, CANParser
+from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.structs import CarParams
-from opendbc.car.volkswagen.carcontroller import CarController, HCAMitigation
+from opendbc.car.volkswagen.carcontroller import HCAMitigation
 from opendbc.car.volkswagen.interface import CarInterface
 from opendbc.car.volkswagen.values import CAR, DBC, CarControllerParams as CCP, FW_QUERY_CONFIG, VolkswagenFlags, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
@@ -33,35 +32,49 @@ class TestVolkswagenHCAMitigation(unittest.TestCase):
         assert hca_mitigation.update(actuator_value, actuator_value) == expected_torque, f"{frame=}"
 
 
-class TestVolkswagenEmergencyAssist(unittest.TestCase):
-  def test_reuses_torque_between_steering_frames(self):
-    """Emergency Assist must use the last command on odd, non-HCA send frames."""
-    controller = CarController.__new__(CarController)
-    controller.frame = 1
-    controller.apply_torque_last = 42
-    controller.apply_curvature_last = 0.
-    controller.accel_last = 0.
-    controller.lead_distance_bars_last = 0
-    controller.gra_acc_counter_last = 0
-    controller.CP = SimpleNamespace(flags=VolkswagenFlags.STOCK_HCA_PRESENT,
-                                    openpilotLongitudinalControl=False, pcmCruise=False)
-    controller.CCP = SimpleNamespace(STEER_STEP=2, STEER_MAX=300, ACC_CONTROL_STEP=2, LDW_STEP=10, ACC_HUD_STEP=2)
-    controller.CAN = SimpleNamespace(cam=2)
-    controller.packer_pt = object()
+class TestVolkswagenTorqueController(unittest.TestCase):
+  def test_steering_and_emergency_assist_cadence(self):
+    platform = CAR.VOLKSWAGEN_GOLF_MK7
+    for stock_hca in (False, True):
+      for lat_active in (False, True):
+        for direction in (-1, 1):
+          with self.subTest(stock_hca=stock_hca, lat_active=lat_active, direction=direction):
+            fingerprint = {bus: {} for bus in range(4)}
+            if stock_hca:
+              fingerprint[2][0x126] = 8  # Stock HCA_01 enables Emergency Assist mitigation
+            cp = CarInterface.get_params(platform, fingerprint, [], False, False, False)
+            cp_sp = CarInterface.get_params_sp(cp, platform, fingerprint, [], False, False, False)
+            cp_ic = CarInterface.get_params_ic(cp, platform, fingerprint, [], False, False, False)
+            ci = CarInterface(cp, cp_sp, cp_ic)
+            cc = structs.CarControl(latActive=lat_active)
+            cc.actuators.torque = direction * 0.5
+            cc = cc.as_reader()
+            cc_sp, cc_ic = structs.CarControlSP(), structs.CarControlIC()
+            eps_parser = CANParser(DBC[platform][Bus.pt], [("LH_EPS_03", 0)], ci.CC.CAN.cam)
 
-    sent_torques = []
-    controller.CCS = SimpleNamespace(create_eps_update=lambda packer, bus, values, torque: sent_torques.append(torque))
+            for frame in range(100):
+              now_nanos = int(frame * DT_CTRL * 1e9)
+              ci.update([])
+              # Exercise both simulated torque and larger real driver input.
+              ci.CS.out.steeringTorque = direction * (250 if frame >= 50 else 0)
+              ci.CS.eps_stock_values["COUNTER"] = (frame // ci.CC.CCP.STEER_STEP) % 16
+              actuators, sends = ci.apply(cc, cc_sp, cc_ic, now_nanos)
+              steer_frame = frame % ci.CC.CCP.STEER_STEP == 0
+              hca = [msg for msg in sends if msg[0] == 0x126 and msg[2] == ci.CC.CAN.pt]
+              eps = [msg for msg in sends if msg[0] == 0x9F and msg[2] == ci.CC.CAN.cam]
+              self.assertEqual(len(hca), int(steer_frame))
+              self.assertEqual(len(eps), int(steer_frame and stock_hca))
+              if not lat_active:
+                self.assertEqual(actuators.torqueOutputCan, 0)
+              if eps:
+                eps_parser.update([(now_nanos, eps)])
+                simulated = min(abs(actuators.torqueOutputCan * 2), ci.CC.CCP.STEER_MAX)
+                expected = max(simulated, abs(ci.CS.out.steeringTorque))
+                self.assertEqual(eps_parser.vl["LH_EPS_03"]["COUNTER"], ci.CS.eps_stock_values["COUNTER"])
+                self.assertEqual(eps_parser.vl["LH_EPS_03"]["EPS_Lenkmoment"], expected)
+                if expected:
+                  self.assertEqual(eps_parser.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"], int(direction < 0))
 
-    actuators = SimpleNamespace(speed=0., as_builder=lambda: SimpleNamespace())
-    hud_control = SimpleNamespace(leadDistanceBars=0)
-    CC = SimpleNamespace(actuators=actuators, hudControl=hud_control)
-    CC_IC = SimpleNamespace(forceRHDForBSM=False, cruiseSpeedLimitPredicative=False,
-                            cruiseSpeedLimitPredReactToSL=False, cruiseSpeedLimitPredReactToCurves=False)
-    CS = SimpleNamespace(out=SimpleNamespace(steeringTorque=0.), eps_stock_values={}, gra_stock_values={"COUNTER": 0})
-
-    controller.update(CC, SimpleNamespace(), CC_IC, CS, 0)
-
-    assert sent_torques == [84.]
 
 class TestVolkswagenStandstillSignals(unittest.TestCase):
   @staticmethod
